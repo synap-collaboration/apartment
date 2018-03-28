@@ -32,10 +32,18 @@ describe Apartment::Adapters::Mysql2Adapter, database: :mysql do
           end
         end
 
+        after do
+          # Apartment::Tenant.init creates per model connection.
+          # Remove the connection after testing not to unintentionally keep the connection across tests.
+          Apartment.excluded_models.each do |excluded_model|
+            excluded_model.constantize.remove_connection
+          end
+        end
+
         it "should process model exclusions" do
           Apartment::Tenant.init
 
-          Company.table_name.should == "#{default_tenant}.companies"
+          expect(Company.table_name).to eq("#{default_tenant}.companies")
         end
       end
     end

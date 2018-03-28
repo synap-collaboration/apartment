@@ -1,3 +1,45 @@
+# 2.1.0
+  * December 15, 2017
+
+  - Add `parallel_migration_threads` configuration option for running migrations
+    in parallel [ryanbrunner]
+  - Drop Ruby 2.0.0 support [meganemura]
+  - ignore_private when parsing subdomains with PublicSuffix [michiomochi]
+  - Ignore row_security statements in psql dumps for backward compatibility
+    [meganemura]
+  - "Host" elevator [shrmnk]
+  - Enhance db:drop task to act on all tenants [kuzukuzu]
+
+# 2.0.0
+  * July 26, 2017
+
+  - Raise FileNotFound rather than abort when loading files [meganemura]
+  - Add 5.1 support with fixes for deprecations [meganemura]
+  - Fix tests for 5.x and a host of dev-friendly improvements [meganemura]
+  - Keep query cache config after switching databases [fernandomm]
+  - Pass constants not strings to middleware stack (Rails 5) [tzabaman]
+  - Remove deprecations from 1.0.0 [caironoleto]
+  - Replace `tld_length` configuration option with PublicSuffix gem for the
+    subdomain elevator [humancopy]
+  - Pass full config to create_database to allow :encoding/:collation/etc
+    [kakipo]
+  - Don't retain a connection during initialization [mikecmpbll]
+  - Fix database name escaping in drop_command [mikecmpbll]
+  - Skip initialization for assets:clean and assets:precompile tasks
+    [frank-west-iii]
+
+# 1.2.0
+  * July 28, 2016
+
+  - Official Rails 5 support
+
+# 1.1.0
+  * May 26, 2016
+
+  - Reset tenant after each request
+  - [Support callbacks](https://github.com/influitive/apartment/commit/ff9c9d092a781026502f5997c0bbedcb5748bc83) on switch [cbeer]
+  - Preliminary support for [separate database hosts](https://github.com/influitive/apartment/commit/abdffbf8cd9fba87243f16c86390da13e318ee1f) [apneadiving]
+
 # 1.0.2
   * July 2, 2015
 
@@ -323,4 +365,3 @@
   * March 30, 2011 *
 
   - Original pass from Ryan
-

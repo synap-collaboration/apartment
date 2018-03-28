@@ -1,5 +1,4 @@
 require 'forwardable'
-require 'apartment/deprecation'
 
 module Apartment
   #   The main entry point to Apartment functions
@@ -9,7 +8,7 @@ module Apartment
     extend self
     extend Forwardable
 
-    def_delegators :adapter, :create, :drop, :switch, :switch!, :current, :each, :reset, :seed, :current_tenant, :default_tenant
+    def_delegators :adapter, :create, :drop, :switch, :switch!, :current, :each, :reset, :set_callback, :seed, :current_tenant, :default_tenant
 
     attr_writer :config
 
@@ -62,15 +61,6 @@ module Apartment
     #
     def config
       @config ||= Apartment.connection_config
-    end
-  end
-
-  def self.const_missing(const_name)
-    if const_name == :Database
-      Apartment::Deprecation.warn "`Apartment::Database` has been deprecated. Use `Apartment::Tenant` instead."
-      Tenant
-    else
-      super
     end
   end
 end

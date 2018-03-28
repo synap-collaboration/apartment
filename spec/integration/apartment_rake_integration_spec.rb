@@ -47,25 +47,58 @@ describe "apartment rake tasks", database: :postgresql do
       Company.delete_all
     end
 
-    describe "#migrate" do
-      it "should migrate all databases" do
-        ActiveRecord::Migrator.should_receive(:migrate).exactly(company_count).times
+    context "with ActiveRecord below 5.2.0" do
+      before do
+        allow(ActiveRecord::Migrator).to receive(:migrations_paths) { %w(spec/dummy/db/migrate) }
+        allow(Apartment::Migrator).to receive(:activerecord_below_5_2?) { true }
+      end
 
-        @rake['apartment:migrate'].invoke
+      describe "#migrate" do
+        it "should migrate all databases" do
+          expect(ActiveRecord::Migrator).to receive(:migrate).exactly(company_count).times
+
+          @rake['apartment:migrate'].invoke
+        end
+      end
+
+      describe "#rollback" do
+        it "should rollback all dbs" do
+          expect(ActiveRecord::Migrator).to receive(:rollback).exactly(company_count).times
+
+          @rake['apartment:rollback'].invoke
+        end
       end
     end
 
-    describe "#rollback" do
-      it "should rollback all dbs" do
-        ActiveRecord::Migrator.should_receive(:rollback).exactly(company_count).times
+    context "with ActiveRecord above or equal to 5.2.0" do
+      let(:migration_context_double) { double(:migration_context) }
 
-        @rake['apartment:rollback'].invoke
+      before do
+        allow(Apartment::Migrator).to receive(:activerecord_below_5_2?) { false }
+      end
+
+      describe "#migrate" do
+        it "should migrate all databases" do
+          allow(ActiveRecord::Base.connection).to receive(:migration_context) { migration_context_double }
+          expect(migration_context_double).to receive(:migrate).exactly(company_count).times
+
+          @rake['apartment:migrate'].invoke
+        end
+      end
+
+      describe "#rollback" do
+        it "should rollback all dbs" do
+          allow(ActiveRecord::Base.connection).to receive(:migration_context) { migration_context_double }
+          expect(migration_context_double).to receive(:rollback).exactly(company_count).times
+
+          @rake['apartment:rollback'].invoke
+        end
       end
     end
 
     describe "apartment:seed" do
       it "should seed all databases" do
-        Apartment::Tenant.should_receive(:seed).exactly(company_count).times
+        expect(Apartment::Tenant).to receive(:seed).exactly(company_count).times
 
         @rake['apartment:seed'].invoke
       end

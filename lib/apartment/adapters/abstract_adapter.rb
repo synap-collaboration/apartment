@@ -1,8 +1,9 @@
-require 'apartment/deprecation'
-
 module Apartment
   module Adapters
     class AbstractAdapter
+      include ActiveSupport::Callbacks
+      define_callbacks :create, :switch
+
       attr_writer :default_tenant
 
       #   @constructor
@@ -17,34 +18,18 @@ module Apartment
       #   @param {String} tenant Tenant name
       #
       def create(tenant)
-        create_tenant(tenant)
+        run_callbacks :create do
+          create_tenant(tenant)
 
-        switch(tenant) do
-          import_database_schema
+          switch(tenant) do
+            import_database_schema
 
-          # Seed data if appropriate
-          seed_data if Apartment.seed_after_create
+            # Seed data if appropriate
+            seed_data if Apartment.seed_after_create
 
-          yield if block_given?
+            yield if block_given?
+          end
         end
-      end
-
-      #   Get the current tenant name
-      #
-      #   @return {String} current tenant name
-      #
-      def current_database
-        Apartment::Deprecation.warn "[Deprecation Warning] `current_database` is now deprecated, please use `current`"
-        current
-      end
-
-      #   Get the current tenant name
-      #
-      #   @return {String} current tenant name
-      #
-      def current_tenant
-        Apartment::Deprecation.warn "[Deprecation Warning] `current_tenant` is now deprecated, please use `current`"
-        current
       end
 
       #   Note alias_method here doesn't work with inheritence apparently ??
@@ -80,10 +65,12 @@ module Apartment
       #   @param {String} tenant name
       #
       def switch!(tenant = nil)
-        return reset if tenant.nil?
+        run_callbacks :switch do
+          return reset if tenant.nil?
 
-        connect_to_new(tenant).tap do
-          Apartment.connection.clear_query_cache
+          connect_to_new(tenant).tap do
+            Apartment.connection.clear_query_cache
+          end
         end
       end
 
@@ -92,25 +79,14 @@ module Apartment
       #   @param {String?} tenant to connect to
       #
       def switch(tenant = nil)
-        if block_given?
-          begin
-            previous_tenant = current
-            switch!(tenant)
-            yield
-
-          ensure
-            switch!(previous_tenant) rescue reset
-          end
-        else
-          Apartment::Deprecation.warn("[Deprecation Warning] `switch` now requires a block reset to the default tenant after the block. Please use `switch!` instead if you don't want this")
+        begin
+          previous_tenant = current
           switch!(tenant)
-        end
-      end
+          yield
 
-      #   [Deprecated]
-      def process(tenant = nil, &block)
-        Apartment::Deprecation.warn("[Deprecation Warning] `process` is now deprecated. Please use `switch`")
-        switch(tenant, &block)
+        ensure
+          switch!(previous_tenant) rescue reset
+        end
       end
 
       #   Iterate over all tenants, switch to tenant and yield tenant name
@@ -140,7 +116,7 @@ module Apartment
       #
       def seed_data
         # Don't log the output of seeding the db
-        silence_stream(STDOUT){ load_or_abort(Apartment.seed_data_file) } if Apartment.seed_data_file
+        silence_warnings{ load_or_raise(Apartment.seed_data_file) } if Apartment.seed_data_file
       end
       alias_method :seed, :seed_data
 
@@ -152,10 +128,7 @@ module Apartment
 
       def drop_command(conn, tenant)
         # connection.drop_database   note that drop_database will not throw an exception, so manually execute
-        conn.execute("DROP DATABASE #{environmentify(tenant)}")
-      end
-
-      class SeparateDbConnectionHandler < ::ActiveRecord::Base
+        conn.execute("DROP DATABASE #{conn.quote_table_name(environmentify(tenant))}")
       end
 
       #   Create the tenant
@@ -171,7 +144,7 @@ module Apartment
       end
 
       def create_tenant_command(conn, tenant)
-        conn.create_database(environmentify(tenant))
+        conn.create_database(environmentify(tenant), @config)
       end
 
       #   Connect to new tenant
@@ -179,8 +152,12 @@ module Apartment
       #   @param {String} tenant Database name
       #
       def connect_to_new(tenant)
+        query_cache_enabled = ActiveRecord::Base.connection.query_cache_enabled
+
         Apartment.establish_connection multi_tenantify(tenant)
         Apartment.connection.active?   # call active? to manually check if this connection is valid
+
+        Apartment.connection.enable_query_cache! if query_cache_enabled
       rescue *rescuable_exceptions => exception
         Apartment::Tenant.reset if reset_on_connection_exception?
         raise_connect_error!(tenant, exception)
@@ -210,7 +187,7 @@ module Apartment
       def import_database_schema
         ActiveRecord::Schema.verbose = false    # do not log schema load output.
 
-        load_or_abort(Apartment.database_schema_file) if Apartment.database_schema_file
+        load_or_raise(Apartment.database_schema_file) if Apartment.database_schema_file
       end
 
       #   Return a new config that is multi-tenanted
@@ -229,15 +206,17 @@ module Apartment
         config[:database] = environmentify(tenant)
       end
 
-      #   Load a file or abort if it doesn't exists
+      #   Load a file or raise error if it doesn't exists
       #
-      def load_or_abort(file)
+      def load_or_raise(file)
         if File.exists?(file)
           load(file)
         else
-          abort %{#{file} doesn't exist yet}
+          raise FileNotFound, "#{file} doesn't exist yet"
         end
       end
+      # Backward compatibility
+      alias_method :load_or_abort, :load_or_raise
 
       #   Exceptions to rescue from on db operations
       #
@@ -255,12 +234,16 @@ module Apartment
         Apartment.db_config_for(tenant).clone
       end
 
-      # neutral connection is necessary whenever you need to create/remove a database from a server.
-      # example: when you use postgresql, you need to connect to the default postgresql database before you create your own.
-      def with_neutral_connection(tenant, &block)
-        SeparateDbConnectionHandler.establish_connection(multi_tenantify(tenant, false))
-        yield(SeparateDbConnectionHandler.connection)
-        SeparateDbConnectionHandler.connection.close
+     def with_neutral_connection(tenant, &block)
+        if Apartment.with_multi_server_setup
+          # neutral connection is necessary whenever you need to create/remove a database from a server.
+          # example: when you use postgresql, you need to connect to the default postgresql database before you create your own.
+          SeparateDbConnectionHandler.establish_connection(multi_tenantify(tenant, false))
+          yield(SeparateDbConnectionHandler.connection)
+          SeparateDbConnectionHandler.connection.close
+        else
+          yield(Apartment.connection)
+        end
       end
 
       def reset_on_connection_exception?
@@ -277,6 +260,9 @@ module Apartment
 
       def raise_connect_error!(tenant, exception)
         raise TenantNotFound, "Error while connecting to tenant #{environmentify(tenant)}: #{ exception.message }"
+      end
+
+      class SeparateDbConnectionHandler < ::ActiveRecord::Base
       end
     end
   end

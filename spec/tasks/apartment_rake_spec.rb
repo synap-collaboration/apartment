@@ -1,6 +1,7 @@
 require 'spec_helper'
 require 'rake'
 require 'apartment/migrator'
+require 'apartment/tenant'
 
 describe "apartment rake tasks" do
 
@@ -34,16 +35,16 @@ describe "apartment rake tasks" do
     let(:tenant_count){ tenant_names.length }
 
     before do
-      Apartment.stub(:tenant_names).and_return tenant_names
+      allow(Apartment).to receive(:tenant_names).and_return tenant_names
     end
 
     describe "apartment:migrate" do
       before do
-        ActiveRecord::Migrator.stub(:migrate)   # don't care about this
+        allow(ActiveRecord::Migrator).to receive(:migrate)   # don't care about this
       end
 
       it "should migrate public and all multi-tenant dbs" do
-        Apartment::Migrator.should_receive(:migrate).exactly(tenant_count).times
+        expect(Apartment::Migrator).to receive(:migrate).exactly(tenant_count).times
         @rake['apartment:migrate'].invoke
       end
     end
@@ -56,9 +57,9 @@ describe "apartment rake tasks" do
         end
 
         it "requires a version to migrate to" do
-          lambda{
+          expect{
             @rake['apartment:migrate:up'].invoke
-          }.should raise_error("VERSION is required")
+          }.to raise_error("VERSION is required")
         end
       end
 
@@ -69,7 +70,7 @@ describe "apartment rake tasks" do
         end
 
         it "migrates up to a specific version" do
-          Apartment::Migrator.should_receive(:run).with(:up, anything, version.to_i).exactly(tenant_count).times
+          expect(Apartment::Migrator).to receive(:run).with(:up, anything, version.to_i).exactly(tenant_count).times
           @rake['apartment:migrate:up'].invoke
         end
       end
@@ -83,9 +84,9 @@ describe "apartment rake tasks" do
         end
 
         it "requires a version to migrate to" do
-          lambda{
+          expect{
             @rake['apartment:migrate:down'].invoke
-          }.should raise_error("VERSION is required")
+          }.to raise_error("VERSION is required")
         end
       end
 
@@ -96,7 +97,7 @@ describe "apartment rake tasks" do
         end
 
         it "migrates up to a specific version" do
-          Apartment::Migrator.should_receive(:run).with(:down, anything, version.to_i).exactly(tenant_count).times
+          expect(Apartment::Migrator).to receive(:run).with(:down, anything, version.to_i).exactly(tenant_count).times
           @rake['apartment:migrate:down'].invoke
         end
       end
@@ -106,15 +107,23 @@ describe "apartment rake tasks" do
       let(:step){ '3' }
 
       it "should rollback dbs" do
-        Apartment::Migrator.should_receive(:rollback).exactly(tenant_count).times
+        expect(Apartment::Migrator).to receive(:rollback).exactly(tenant_count).times
         @rake['apartment:rollback'].invoke
       end
 
       it "should rollback dbs STEP amt" do
-        Apartment::Migrator.should_receive(:rollback).with(anything, step.to_i).exactly(tenant_count).times
+        expect(Apartment::Migrator).to receive(:rollback).with(anything, step.to_i).exactly(tenant_count).times
         ENV['STEP'] = step
         @rake['apartment:rollback'].invoke
       end
     end
+
+    describe "apartment:drop" do
+      it "should migrate public and all multi-tenant dbs" do
+        expect(Apartment::Tenant).to receive(:drop).exactly(tenant_count).times
+        @rake['apartment:drop'].invoke
+      end
+    end
+
   end
 end

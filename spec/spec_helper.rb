@@ -4,6 +4,18 @@ $LOAD_PATH.unshift(File.dirname(__FILE__))
 ENV["RAILS_ENV"] = "test"
 
 require File.expand_path("../dummy/config/environment.rb", __FILE__)
+
+# Loading dummy applications affects table_name of each excluded models
+# defined in `spec/dummy/config/initializers/apartment.rb`.
+# To make them pristine, we need to execute below lines.
+Apartment.excluded_models.each do |model|
+  klass = model.constantize
+
+  Apartment.connection_class.remove_connection(klass)
+  klass.clear_all_connections!
+  klass.reset_table_name
+end
+
 require "rspec/rails"
 require 'capybara/rspec'
 require 'capybara/rails'
@@ -32,6 +44,17 @@ RSpec.configure do |config|
   config.after(:all) do
     `git checkout -- spec/dummy/db/schema.rb`
   end
+
+  # rspec-rails 3 will no longer automatically infer an example group's spec type
+  # from the file location. You can explicitly opt-in to the feature using this
+  # config option.
+  # To explicitly tag specs without using automatic inference, set the `:type`
+  # metadata manually:
+  #
+  #     describe ThingsController, :type => :controller do
+  #       # Equivalent to being in spec/controllers
+  #     end
+  config.infer_spec_type_from_file_location!
 end
 
 # Load shared examples, must happen after configure for RSpec 3

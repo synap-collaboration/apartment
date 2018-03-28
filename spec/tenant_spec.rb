@@ -59,8 +59,7 @@ describe Apartment::Tenant do
 
     describe "#adapter" do
       it "should load postgresql adapter" do
-        subject.adapter
-        Apartment::Adapters::PostgresqlAdapter.should be_a(Class)
+        expect(subject.adapter).to be_a(Apartment::Adapters::PostgresqlSchemaAdapter)
       end
 
       it "raises exception with invalid adapter specified" do
@@ -68,7 +67,7 @@ describe Apartment::Tenant do
 
         expect {
           Apartment::Tenant.adapter
-        }.to raise_error
+        }.to raise_error(RuntimeError)
       end
 
       context "threadsafety" do
@@ -77,9 +76,9 @@ describe Apartment::Tenant do
 
         it 'has a threadsafe adapter' do
           subject.switch!(db1)
-          thread = Thread.new { subject.current.should == Apartment.default_tenant }
+          thread = Thread.new { expect(subject.current).to eq(Apartment.default_tenant) }
           thread.join
-          subject.current.should == db1
+          expect(subject.current).to eq(db1)
         end
       end
     end
@@ -100,7 +99,7 @@ describe Apartment::Tenant do
       describe "#create" do
         it "should seed data" do
           subject.switch! db1
-          User.count.should be > 0
+          expect(User.count).to be > 0
         end
       end
 
@@ -121,10 +120,10 @@ describe Apartment::Tenant do
             db_count = User.count + x.times{ User.create }
 
             subject.switch! db2
-            User.count.should == db2_count
+            expect(User.count).to eq(db2_count)
 
             subject.switch! db1
-            User.count.should == db_count
+            expect(User.count).to eq(db_count)
           end
         end
 
@@ -137,15 +136,23 @@ describe Apartment::Tenant do
             subject.init
           end
 
+          after do
+            # Apartment::Tenant.init creates per model connection.
+            # Remove the connection after testing not to unintentionally keep the connection across tests.
+            Apartment.excluded_models.each do |excluded_model|
+              excluded_model.constantize.remove_connection
+            end
+          end
+
           it "should create excluded models in public schema" do
             subject.reset # ensure we're on public schema
             count = Company.count + x.times{ Company.create }
 
             subject.switch! db1
             x.times{ Company.create }
-            Company.count.should == count + x
+            expect(Company.count).to eq(count + x)
             subject.reset
-            Company.count.should == count + x
+            expect(Company.count).to eq(count + x)
           end
         end
       end
@@ -165,8 +172,8 @@ describe Apartment::Tenant do
       it 'should seed from default path' do
         subject.create db1
         subject.switch! db1
-        User.count.should eq(3)
-        User.first.name.should eq('Some User 0')
+        expect(User.count).to eq(3)
+        expect(User.first.name).to eq('Some User 0')
       end
 
       it 'should seed from custom path' do
@@ -175,8 +182,8 @@ describe Apartment::Tenant do
         end
         subject.create db1
         subject.switch! db1
-        User.count.should eq(6)
-        User.first.name.should eq('Different User 0')
+        expect(User.count).to eq(6)
+        expect(User.first.name).to eq('Different User 0')
       end
     end
   end
